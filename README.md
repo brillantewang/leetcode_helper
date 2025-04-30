@@ -1,0 +1,1 @@
+This is a project that hits Leetcode's internal graphql API to get Meta's 30-day questions and output them into a csv. It requires that you have a Leetcode Premium subscription and that you add your LEETCODE_SESSION cookie to the `.env` file.
