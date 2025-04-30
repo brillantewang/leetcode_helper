@@ -59,41 +59,48 @@ def get_leetcode_meta_questions() -> list[dict]:
     data = response.json()
     return data["data"]["favoriteQuestionList"]["questions"]
 
-def read_previous_csv(file_path: str) -> list[dict]:
+def read_previous_csv(file_path: str) -> tuple[list[dict], list[str]]:
     if not os.path.exists(file_path):
-        return []
+        return [], []
 
     with open(file_path, 'r', newline='', encoding='utf-8') as f:
         reader = csv.DictReader(f)
-        return list(reader)
+        return list(reader), reader.fieldnames
 
-def write_to_csv(questions: list[dict], prev_questions: list[dict] = None):
+def write_to_csv(questions: list[dict], prev_questions: list[dict] = [], prev_fieldnames: list[str] = []):
     timestamp = datetime.now().strftime("%m%d%Y")
     filename = f"leetcode_meta_thirty_days_{timestamp}.csv"
 
+    fieldnames = ["title_slug", "url", "is_outdated"]
+    fieldnames.extend(f for f in prev_fieldnames if f not in fieldnames)
     with open(filename, "w", newline="", encoding="utf-8") as f:
-        fieldnames = ["title_slug", "url", "is_outdated"]
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
 
         # Write current questions
+        prev_lookup = {q["title_slug"]: q for q in prev_questions}
         for q in questions:
             url = f"https://leetcode.com/problems/{q['titleSlug']}"
-            writer.writerow({
+            row = {
                 "title_slug": q["titleSlug"],
                 "url": url,
                 "is_outdated": ""
-            })
+            }
+
+            if q["titleSlug"] in prev_lookup:
+                prev_q = prev_lookup[q["titleSlug"]]
+                for field in fieldnames:
+                    if field not in row:
+                        row[field] = prev_q[field]
+            writer.writerow(row)
 
         # Write outdated questions from previous csv
-        curr_slugs = set([q["titleSlug"] for q in questions])
+        curr_slugs = {q["titleSlug"] for q in questions}
         for prev_q in prev_questions:
             if prev_q["title_slug"] not in curr_slugs:
-                writer.writerow({
-                    "title_slug": prev_q["title_slug"],
-                    "url": prev_q["url"],
-                    "is_outdated": "T"
-                })
+                row = dict(prev_q)
+                row["is_outdated"] = "T"
+                writer.writerow(row)
 
 def main():
     parser = argparse.ArgumentParser(description='Fetch LeetCode questions and optionally merge with previous CSV')
@@ -104,13 +111,13 @@ def main():
         print("Getting questions...")
         questions = get_leetcode_meta_questions()
 
-        prev_questions = []
+        prev_questions, prev_fieldnames = [], []
         if args.prev_csv:
             print(f"Reading previous CSV from {args.prev_csv}...")
-            prev_questions = read_previous_csv(args.prev_csv)
-        
+            prev_questions, prev_fieldnames = read_previous_csv(args.prev_csv)
+
         print("Writing to csv...")
-        write_to_csv(questions, prev_questions)
+        write_to_csv(questions, prev_questions, prev_fieldnames)
         print("Successfully wrote questions to csv")
     except Exception as e:
         print(f"An error occurred: {e}")
