@@ -1,14 +1,19 @@
 import requests
-import json
 import csv
 import os
 from dotenv import load_dotenv
 from datetime import datetime
 import argparse
+from enum import Enum
 
 load_dotenv()
 
-def get_leetcode_meta_questions() -> list[dict]:
+class FavoriteSlug(Enum):
+    """Enum for LeetCode favorite list slugs"""
+    FACEBOOK_THIRTY_DAYS = "facebook-thirty-days"
+    UBER_THREE_MONTHS = "uber-three-months"
+
+def get_leetcode_questions(favorite_slug: str = FavoriteSlug.FACEBOOK_THIRTY_DAYS.value) -> list[dict]:
     url = "https://leetcode.com/graphql"
 
     # Based this on the actual network request that leetcode makes in browser
@@ -33,7 +38,7 @@ def get_leetcode_meta_questions() -> list[dict]:
     """
 
     variables = {
-        "favoriteSlug": "facebook-thirty-days",
+        "favoriteSlug": f"{favorite_slug}",
         "sortBy": {
             "sortField": "CUSTOM", # This is what leetcode actually uses by default. Can also use FREQUENCY
             "sortOrder": "ASCENDING"
@@ -67,9 +72,11 @@ def read_previous_csv(file_path: str) -> tuple[list[dict], list[str]]:
         reader = csv.DictReader(f)
         return list(reader), reader.fieldnames
 
-def write_to_csv(questions: list[dict], prev_questions: list[dict] = [], prev_fieldnames: list[str] = []):
+def write_to_csv(favorite_slug: str, questions: list[dict], prev_questions: list[dict] = [], prev_fieldnames: list[str] = []):
+    print(f"Writing {len(questions)} questions to csv...")
+
     timestamp = datetime.now().strftime("%m%d%Y")
-    filename = f"leetcode_meta_thirty_days_{timestamp}.csv"
+    filename = f"leetcode_{favorite_slug}_{timestamp}.csv"
 
     fieldnames = ["title_slug", "url", "is_outdated"]
     fieldnames.extend(f for f in prev_fieldnames if f not in fieldnames)
@@ -102,23 +109,26 @@ def write_to_csv(questions: list[dict], prev_questions: list[dict] = [], prev_fi
                 row["is_outdated"] = "T"
                 writer.writerow(row)
 
+        print(f"Successfully wrote questions to {filename}")
+
 def main():
     parser = argparse.ArgumentParser(description='Fetch LeetCode questions and optionally merge with previous CSV')
     parser.add_argument('--prev-csv', type=str, help='Path to previous CSV file to merge with')
+    parser.add_argument('--favorite-slug', type=str,
+                       default=FavoriteSlug.FACEBOOK_THIRTY_DAYS.value,
+                       help=f'Favorite slug to fetch questions from. Example options: {", ".join([slug.value for slug in FavoriteSlug])}. You can also use any custom slug.')
     args = parser.parse_args()
 
     try:
         print("Getting questions...")
-        questions = get_leetcode_meta_questions()
+        questions = get_leetcode_questions(args.favorite_slug)
 
         prev_questions, prev_fieldnames = [], []
         if args.prev_csv:
             print(f"Reading previous CSV from {args.prev_csv}...")
             prev_questions, prev_fieldnames = read_previous_csv(args.prev_csv)
 
-        print("Writing to csv...")
-        write_to_csv(questions, prev_questions, prev_fieldnames)
-        print("Successfully wrote questions to csv")
+        write_to_csv(args.favorite_slug, questions, prev_questions, prev_fieldnames)
     except Exception as e:
         print(f"An error occurred: {e}")
 
